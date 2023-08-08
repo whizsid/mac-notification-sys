@@ -1,8 +1,9 @@
 //! Notification Types
+
 use bitflags::bitflags;
-use cron::{Schedule, TimeUnitSpec};
 use icrate::Foundation::{
-    CGPoint, CGRect, CGSize, NSDateComponents, NSMutableArray, NSMutableDictionary, NSNumber, NSURL,
+    CGPoint, CGRect, CGSize, NSArray, NSDateComponents, NSDictionary, NSMutableArray,
+    NSMutableDictionary, NSNumber, NSURL,
 };
 use icrate::UniformTypeIdentifiers::{
     UTType, UTTypeAIFF, UTTypeAVI, UTTypeGIF, UTTypeJPEG, UTTypeMP3, UTTypeMPEG, UTTypeMPEG2Video,
@@ -22,8 +23,6 @@ use icrate::UserNotifications::{
 use icrate::{Foundation::NSString, UserNotifications::UNNotificationRequest};
 use objc2::runtime::Object;
 use objc2::{rc::Id, ClassType};
-use std::{collections::HashMap, time::Duration};
-use url::Url;
 
 use super::bind::CoreFoundation::kCFAllocatorDefault;
 use super::bind::CoreGraphics::CGRectCreateDictionaryRepresentation;
@@ -33,59 +32,341 @@ use super::bind::CoreMedia::{
 };
 use crate::error::NotificationError;
 use crate::os::{AppleOS, APPLE_VERSION};
+use core::time::Duration;
 
-/// The data for a local or remote notification the system delivers to your app.
-#[derive(Debug, Clone, Default)]
+/// The data for a local or remote notification
+/// the system delivers to your app.
+#[derive(Debug)]
 pub struct Notification {
-    /// The unique identifier for the notification.
-    pub(crate) identifier: String,
-    /// The conditions that trigger the delivery of the notification.
-    pub(crate) trigger: Option<Trigger>,
+    trigger: Option<Trigger>,
+    identifier: Option<Id<NSString>>,
     /// The localized text that provides the notification’s primary description.
-    pub(crate) title: Option<String>,
+    title: Option<Id<NSString>>,
     /// The localized text that provides the notification’s secondary description.
-    pub(crate) subtitle: Option<String>,
+    subtitle: Option<Id<NSString>>,
     /// The localized text that provides the notification’s main content.
-    pub(crate) body: String,
+    body: Id<NSString>,
     /// The visual and audio attachments to display alongside
     /// the notification’s main content.
-    pub(crate) attachments: Vec<Attachment>,
+    attachments: Id<NSArray>,
     /// The custom data to associate with the notification.
-    pub(crate) user_info: HashMap<String, String>,
+    user_data: Id<NSMutableDictionary<Object, Object>>,
     /// The identifier that groups related notifications.
-    pub(crate) thread_identifier: Option<String>,
+    thread_identifier: Option<Id<NSString>>,
     /// The identifier of the notification’s category.
-    pub(crate) category_identifier: Option<String>,
+    category_identifier: Option<Id<NSString>>,
     /// The text the system adds to the notification summary to
     /// provide additional context.
-    pub(crate) summary_argument: Option<String>,
+    summary_argument: Option<Id<NSString>>,
     /// The number the system adds to the notification summary when the
     /// notification represents multiple items.
-    pub(crate) summary_argument_count: Option<usize>,
+    summary_argument_count: Option<usize>,
     /// The name of the image or storyboard to use when your app
     /// launches because of the notification.
-    pub(crate) launch_image_name: Option<String>,
+    launch_image_name: Option<Id<NSString>>,
     /// The number that your app’s icon displays.
-    pub(crate) badge: Option<usize>,
+    badge: Option<usize>,
     /// The value your app uses to determine which scene
     /// to display to handle the notification.
-    pub(crate) target_content_identifier: Option<String>,
+    target_content_identifier: Option<Id<NSString>>,
     /// The sound that plays when the system delivers the notification.
-    pub(crate) sound: Option<Sound>,
+    sound: Option<Sound>,
     /// The notification’s importance and required delivery timing.
     ///
     /// Platform Support:- macOS 12.0+
-    pub(crate) interruption_level: Option<InterruptionLevel>,
+    interruption_level: Option<InterruptionLevel>,
     /// The score the system uses to determine if the notification
     /// is the summary’s featured notification.
     ///
     /// Platform Support:- macOS 12.0+
-    pub(crate) relevance_score: Option<f32>,
+    relevance_score: Option<f32>,
     /// The criteria the system evaluates to determine if it displays
     /// the notification in the current Focus.
     ///
     /// Platform Support:- macOS 13.0+
-    pub(crate) filter_criteria: Option<String>,
+    filter_criteria: Option<Id<NSString>>,
+}
+
+impl Notification {
+    /// Creating a new notification builder
+    ///
+    /// `body` :- The localized text that provides the notification’s main content.
+    pub fn new_with_body(body: &str) -> Notification {
+        Self {
+            body: NSString::from_str(body),
+            ..Default::default()
+        }
+    }
+
+    /// The localized text that provides the notification’s primary description.
+    pub fn title<'a>(&'a mut self, title: &str) -> &'a mut Self {
+        self.title = Some(NSString::from_str(title));
+        self
+    }
+
+    /// The localized text that provides the notification’s secondary description.
+    pub fn subtitle<'a>(&'a mut self, subtitle: &str) -> &'a mut Self {
+        self.subtitle = Some(NSString::from_str(subtitle));
+        self
+    }
+
+    /// The localized text that provides the notification’s main content.
+    pub fn body<'a>(&'a mut self, body: &str) -> &'a mut Self {
+        self.body = NSString::from_str(body);
+        self
+    }
+
+    /// The custom data to associate with the notification.
+    pub fn user_data<'a>(&'a mut self, key: &str, value: &str) -> &'a mut Self {
+        let key_ns_str = NSString::from_str(key);
+        let val_ns_str = NSString::from_str(value);
+        unsafe {
+            self.user_data.setObject_forKey(&key_ns_str, &val_ns_str);
+        }
+        self
+    }
+
+    /// Unique identifier of the notification
+    pub fn identifier<'a>(&'a mut self, identifier: &str) -> &'a mut Self {
+        self.identifier = Some(NSString::from_str(identifier));
+        self
+    }
+
+    /// Attach a vide/image/audio to the notification.
+    /// Use the `AttachmentBuilder` to make an attachment.
+    pub fn attachment<'a, T>(&'a mut self, attachment: Attachment) -> &'a mut Self {
+        self.attachments.push(attachment);
+        self
+    }
+
+    /// Specifying the category of the notification
+    pub fn category<'a>(&'a mut self, category: &Category) -> &'a mut Self {
+        self.category_identifier = Some(category.identifier.clone());
+        self
+    }
+
+    /// Specifying the category by using the category id
+    pub fn category_id<'a>(&'a mut self, category_id: &str) -> &'a mut Self {
+        self.category_identifier = Some(NSString::from_str(category_id));
+        self
+    }
+
+    /// The name of the image or storyboard to use when your app
+    /// launches because of the notification.
+    pub fn launch_image<'a>(&'a mut self, image_name: &str) -> &'a mut Self {
+        self.launch_image_name = Some(NSString::from_str(image_name));
+        self
+    }
+
+    /// The identifier that groups related notifications.
+    pub fn thread<'a>(&'a mut self, thread_id: &str) -> &'a mut Self {
+        self.thread_identifier = Some(NSString::from_str(thread_id));
+        self
+    }
+
+    /// The default sound for notifications played upon delivery of a notification.
+    pub fn default_sound<'a>(&'a mut self) -> &'a mut Self {
+        self.sound = Some(Sound::Default);
+        self
+    }
+
+    /// A sound that represents a custom sound file will be played
+    /// upon delivery of a notification
+    pub fn sound<'a>(&'a mut self, name: &str) -> &'a mut Self {
+        self.sound = Some(Sound::Named(NSString::from_str(name)));
+        self
+    }
+
+    /// The default critical sound for notifications will be played
+    /// upon delivery of a notification
+    pub fn default_critical_sound<'a>(&'a mut self) -> &'a mut Self {
+        self.sound = Some(Sound::DefaultCriticalSound);
+        self
+    }
+
+    /// The default critical sound for notifications with specified volume
+    /// will be played upon delivery of a notification. The volume range is 0.0-1.0
+    pub fn default_critical_sound_with_volume<'a>(&'a mut self, volume: f32) -> &'a mut Self {
+        self.sound = Some(Sound::DefaultCriticalSoundWithVolume(volume));
+        self
+    }
+
+    /// A specified critical sound will be played upon delivery of a notification
+    pub fn critical_sound<'a>(&'a mut self, sound_name: &str) -> &'a mut Self {
+        self.sound = Some(Sound::CriticalSoundNamed(NSString::from_str(sound_name)));
+        self
+    }
+
+    /// A specified cirtical sound with the given volume will be played upon delivery
+    /// of a notification. The volumd range is 0.0 - 1.0
+    pub fn critical_sound_with_volume<'a>(
+        &'a mut self,
+        sound_name: &str,
+        volume: f32,
+    ) -> &'a mut Self {
+        self.sound = Some(Sound::CriticalSoundNamedWithVolume(
+            NSString::from_str(sound_name),
+            volume,
+        ));
+        self
+    }
+
+    /// The default ringtone sound will be played upon delivery of a notification.
+    /// This option is only available for iOS, iPadOS and visionOS
+    pub fn default_ringtone<'a>(&'a mut self) -> &'a mut Self {
+        self.sound = Some(Sound::DefaultRingtone);
+        self
+    }
+
+    /// A specified ringtone sound will be played upon delivery of a notification.
+    /// This option is only available for iOS, iPadOS and visionOS
+    pub fn ringtone<'a>(&'a mut self, ringtone_name: &str) -> &'a mut Self {
+        self.sound = Some(Sound::RingtoneSoundNamed(NSString::from_str(ringtone_name)));
+        self
+    }
+
+    /// Schedule the notification to repeat after some delay. The first
+    /// notification will be delivered after elapsed the provided duration.
+    ///
+    /// The minimum duration is 1 minute
+    pub fn interval<'a>(&'a mut self, duration: Duration) -> &'a mut Self {
+        assert!(
+            duration.as_secs() > 60,
+            "Duration should be grater than one minute"
+        );
+
+        self.trigger = Some(Trigger {
+            kind: TriggerKind::TimeInterval(duration),
+            repeats: true,
+        });
+        self
+    }
+
+    /// Schedule the notification to send after some delay
+    pub fn delay<'a>(&'a mut self, duration: Duration) -> &'a mut Self {
+        self.trigger = Some(Trigger {
+            kind: TriggerKind::TimeInterval(duration),
+            repeats: false,
+        });
+        self
+    }
+
+    /// Schedule the notification for one time using a datetime pattern
+    /// The pattern should be in local timezone
+    pub fn schedule_once_using_datetime_pattern<'a>(&'a mut self, schedule: DateTimePattern) -> &'a mut Self {
+        self.trigger = Some(Trigger {
+            kind: TriggerKind::Calendar(schedule),
+            repeats: false,
+        });
+        self
+    }
+
+    /// Schedule the notification to repeat for a datetime pattern
+    /// The pattern should be in local timezone
+    pub fn schedule_using_datetime_pattern<'a>(&'a mut self, schedule: DateTimePattern) -> &'a mut Self {
+        self.trigger = Some(Trigger {
+            kind: TriggerKind::Calendar(schedule),
+            repeats: true,
+        });
+        self
+    }
+
+    /// Schedule the notification to deliver at exact datetime
+    pub fn schedule<'a, Tz: TimeZone>(&'a mut self, date_time: DateTime<Tz>) -> &'a mut Self {
+        self.trigger = Some(Trigger {
+            kind: TriggerKind::Calendar(datetime_to_schedule(date_time)),
+            repeats: false,
+        });
+        self
+    }
+
+    /// The system presents the notification immediately, lights up
+    /// the screen, and can play a sound.
+    ///
+    /// Supported Platforms:- macOS 12.0
+    pub fn as_active<'a>(&'a mut self) -> &'a mut Self {
+        self.interruption_level = Some(InterruptionLevel::Active);
+        self
+    }
+
+    /// The system presents the notification immediately, lights up
+    /// the screen, and bypasses the mute switch to play a sound.
+    ///
+    /// Supported Platforms:- macOS 12.0
+    pub fn as_critical<'a>(&'a mut self) -> &'a mut Self {
+        self.interruption_level = Some(InterruptionLevel::Critical);
+        self
+    }
+
+    /// The system adds the notification to the notification list
+    /// without lighting up the screen or playing a sound.
+    ///
+    /// Supported Platforms:- macOS 12.0
+    pub fn as_passive<'a>(&'a mut self) -> &'a mut Self {
+        self.interruption_level = Some(InterruptionLevel::Passive);
+        self
+    }
+
+    /// The system presents the notification immediately, lights
+    /// up the screen, and can play a sound, but won’t break
+    /// through system notification controls.
+    ///
+    /// Supported Platforms:- macOS 12.0
+    pub fn as_time_sensitive<'a>(&'a mut self) -> &'a mut Self {
+        self.interruption_level = Some(InterruptionLevel::TimeSensitive);
+        self
+    }
+
+    /// The text the system adds to the notification summary to
+    /// provide additional context.
+    pub fn summary_argument<'a>(
+        &'a mut self,
+        summary_argument: &str,
+    ) -> &'a mut Self {
+        self.summary_argument = Some(NSString::from_str(summary_argument));
+        self
+    }
+
+    /// The number the system adds to the notification summary when the
+    /// notification represents multiple items.
+    pub fn summary_argument_count<'a>(&'a mut self, summary_argument_count: usize) -> &'a mut Self {
+        self.summary_argument_count = Some(summary_argument_count);
+        self
+    }
+
+    /// The number that your app’s icon displays.
+    pub fn badge_count<'a>(&'a mut self, badge: usize) -> &'a mut Self {
+        self.badge = Some(badge);
+        self
+    }
+
+    /// The value your app uses to determine which scene
+    /// to display to handle the notification.
+    pub fn target_content_identifier<'a>(
+        &'a mut self,
+        identifier: &str,
+    ) -> &'a mut Self {
+        self.target_content_identifier = Some(NSString::from_str(identifier));
+        self
+    }
+
+    /// The score the system uses to determine if the notification
+    /// is the summary’s featured notification.
+    ///
+    /// Platform Support:- macOS 12.0+
+    pub fn relevance_score<'a>(&'a mut self, score: f32) -> &'a mut Self {
+        self.relevance_score = Some(score);
+        self
+    }
+
+    /// The criteria the system evaluates to determine if it displays
+    /// the notification in the current Focus.
+    ///
+    /// Platform Support:- macOS 13.0+
+    pub fn filter_criteria<'a>(&'a mut self, filter: &str) -> &'a mut Self {
+        self.filter_criteria = Some(NSString::from_str(filter));
+        self
+    }
 }
 
 impl TryInto<Id<UNNotificationRequest>> for Notification {
@@ -241,7 +522,7 @@ pub enum Sound {
     Default,
     /// Creates a sound object that represents a custom sound file.
     /// <https://developer.apple.com/documentation/usernotifications/unnotificationsound/1649031-soundnamed?language=objc>
-    Named(String),
+    Named(Id<NSString>),
     /// The default sound used for critical alerts.
     DefaultCriticalSound,
     /// Creates a sound object that plays the default critical alert
@@ -249,14 +530,14 @@ pub enum Sound {
     /// between 0.0 and 1.0.
     DefaultCriticalSoundWithVolume(f32),
     /// Creates a custom sound object for critical alerts.
-    CriticalSoundNamed(String),
+    CriticalSoundNamed(Id<NSString>),
     /// Custom sound for critical alerts with the volume you specify.
-    CriticalSoundNamedWithVolume(String, f32),
+    CriticalSoundNamedWithVolume(Id<NSString>, f32),
     /// Default ringtone of the iPad or iPhone. This method is not supported
     /// for macOS.
     DefaultRingtone,
     /// Custom ringtone sound. This method is not supported for macOS
-    RingtoneSoundNamed(String),
+    RingtoneSoundNamed(Id<NSString>),
 }
 
 impl Into<Id<UNNotificationSound>> for Sound {
@@ -499,7 +780,7 @@ pub struct VideoAttachmentOptions {
     /// containing a file extension
     format: Option<VideoFormat>,
     /// Time snapshot to take the frame for thumbnail
-    pub(crate) thumbnail_time: Option<VideoTime>,
+    thumbnail_time: Option<VideoTime>,
     /// Which part should display in the thumbnail
     thumbnail_crop: Option<ThumbnailClippingRect>,
     /// Hide the the thumbnail
@@ -602,12 +883,22 @@ pub enum AttachmentOptions {
 
 /// Attachments to display in notification
 #[derive(Debug, Clone)]
-pub struct Attachment {
+pub struct Attachment<T> {
     /// The unique identifier for the attachment.
-    pub(crate) identifier: String,
+    identifier: Option<Id<NSString>>,
     /// The URL of the file for this attachment.
-    pub(crate) url: Url,
-    pub(crate) options: Option<AttachmentOptions>,
+    url: Option<Id<NSURL>>,
+    options: T,
+}
+
+impl <T> Attachment<T> {
+    fn validate_url(self) -> Result<Id<NSURL>, NotificationError> {
+        if let Some(url) = self.url {
+            Ok(url)
+        } else {
+            Err(NotificationError::ValidationError)
+        }
+    }
 }
 
 impl TryInto<Id<UNNotificationAttachment>> for Attachment {
@@ -788,7 +1079,7 @@ pub enum TriggerKind {
     TimeInterval(Duration),
     /// A trigger condition that causes a notification
     /// the system delivers at a specific date and time.
-    Calendar(Schedule),
+    Calendar(DateTimePattern),
 }
 
 /// The common behavior for subclasses that trigger the
@@ -1126,6 +1417,16 @@ impl Into<UNNotificationInterruptionLevel> for InterruptionLevel {
             TimeSensitive => UNNotificationInterruptionLevelTimeSensitive,
         }
     }
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct DateTimePattern {
+    pub year: Option<i32>,
+    pub month: Option<u8>,
+    pub day: Option<u8>,
+    pub hour: Option<u8>,
+    pub minute: Option<u8>,
+    pub second: Option<u8>
 }
 
 #[cfg(test)]

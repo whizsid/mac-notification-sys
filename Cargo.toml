@@ -31,12 +31,10 @@ icrate = { version = "0.0.3", features = [
 
 ] }
 bitflags = {version="^2.3", optional = true}
-cron = {version = "^0.12", optional = true}
-url = {version ="^2.4", optional = true}
 futures = "^0.3"
-chrono = {version = "^0.4", optional = true}
 uuid = {version = "^1.4", features = ["v4"], optional = true}
 lazy_static = "^1.4"
+chrono = {version = "^0.4", default-features = false}
 
 [features]
 default = ["ns-first"]
@@ -53,10 +51,7 @@ un = [
   "icrate/Foundation_NSMutableArray",
   "icrate/UniformTypeIdentifiers",
   "dep:uuid",
-  "dep:cron",
-  "dep:url",
-  "dep:bitflags",
-  "dep:chrono"
+  "dep:bitflags"
 ]
 ns = []
 ns-first = ["un", "ns"]

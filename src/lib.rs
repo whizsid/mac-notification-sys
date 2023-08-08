@@ -1,6 +1,4 @@
-//! A very thin wrapper around UNNotification
-//!
-//! Only supported for `macOS 10.14+`
+//! Wrappers around Apple notification APIs
 #![warn(
     missing_docs,
     trivial_casts,
@@ -10,11 +8,20 @@
 )]
 #![cfg(target_os = "macos")]
 #![allow(improper_ctypes)]
+#![no_std]
 
-use icrate::Foundation::{NSDate, NSDefaultRunLoopMode, NSRunLoop};
+use icrate::Foundation::{
+    // IOS 2.0 MacOS 10.0 MacCatalyst 13.0 TvOS 9.0 WatchOS 2.0 VisionOS 1.0
+    NSDate,
+    // IOS 2.0 MacOS 10.0 MacCatalyst 13.0 TvOS 9.0 WatchOS 2.0 VisionOS 1.0
+    NSDefaultRunLoopMode,
+    // IOS 2.0 MacOS 10.0 MacCatalyst 13.0 TvOS 9.0 WatchOS 2.0 VisionOS 1.0
+    NSRunLoop};
 
 #[cfg(feature="un")]
 pub mod un;
+#[cfg(feature="ns")]
+pub mod ns;
 pub mod error;
 mod os;
 
